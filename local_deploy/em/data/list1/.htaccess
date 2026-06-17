@@ -1,0 +1,5 @@
+# Allow Flutter web app to fetch shared .xlsx via HTTP GET.
+<IfModule mod_headers.c>
+  Header set Access-Control-Allow-Origin "*"
+  Header set Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+</IfModule>
