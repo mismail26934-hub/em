@@ -17,6 +17,7 @@ import '../services/excel_url_prefs.dart';
 import '../services/fleet_excel_parser.dart';
 import '../services/fleet_server_config.dart';
 import '../services/jack_knife_excel_parser.dart';
+import '../services/jack_knife_view_prefs.dart';
 import '../services/workbook_loader.dart';
 import '../services/workbook_read_result.dart';
 import '../theme/app_orange.dart';
@@ -53,6 +54,8 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
 
   /// Carousel tick dijeda saat pointer di atas batang chart (lihat [FleetPanelChart.onBarHovered]).
   bool _carouselPausedForBarHover = false;
+
+  bool _showJkTable = true;
 
   static const List<int> _carouselMinutePresets = [1, 3, 5, 10, 15, 30, 60];
 
@@ -98,6 +101,8 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
 
   Future<void> _bootstrap() async {
     await DashboardListMode.init();
+    await JackKnifeViewPrefs.init();
+    if (mounted) setState(() => _showJkTable = JackKnifeViewPrefs.showTable);
     await _loadCarouselPrefs();
     await _primeExcelUrlField();
     if (!mounted) return;
@@ -158,6 +163,30 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       onPressed: _showListModePicker,
       icon: Icon(_isList2 ? Icons.scatter_plot_outlined : Icons.bar_chart, size: 18),
       label: Text(label),
+    );
+  }
+
+  Future<void> _toggleJkTable() async {
+    final next = !_showJkTable;
+    await JackKnifeViewPrefs.setShowTable(next);
+    if (!mounted) return;
+    setState(() => _showJkTable = next);
+  }
+
+  Widget _jkTableToggle({bool compact = false}) {
+    final on = _showJkTable;
+    final tip = on ? 'Sembunyikan tabel downtime' : 'Tampilkan tabel downtime';
+    if (compact) {
+      return IconButton(
+        tooltip: tip,
+        onPressed: _toggleJkTable,
+        icon: Icon(on ? Icons.table_chart : Icons.table_chart_outlined),
+      );
+    }
+    return TextButton.icon(
+      onPressed: _toggleJkTable,
+      icon: Icon(on ? Icons.table_chart : Icons.table_chart_outlined, size: 18),
+      label: Text(on ? 'Tabel' : 'Tanpa tabel'),
     );
   }
 
@@ -1196,6 +1225,10 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
                     icon: const Icon(Icons.timer_outlined),
                   ),
                   if (showToolbarTextLabels)
+                    _jkTableToggle()
+                  else
+                    _jkTableToggle(compact: true),
+                  if (showToolbarTextLabels)
                     _listModeChip()
                   else
                     _listModeChip(compact: true),
@@ -1265,7 +1298,10 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
                   itemBuilder: (context, i) {
                     return Padding(
                       padding: EdgeInsets.fromLTRB(padH, 10, padH, 6),
-                      child: JackKnifePanelChart(panel: d.panels[i]),
+                      child: JackKnifePanelChart(
+                        panel: d.panels[i],
+                        showTable: _showJkTable,
+                      ),
                     );
                   },
                 ),

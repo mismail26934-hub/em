@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/jack_knife_dashboard_data.dart';
 import '../theme/app_orange.dart';
+import '../services/jack_knife_view_prefs.dart';
 import '../widgets/jack_knife_panel_chart.dart';
 import 'jack_knife_panel_fullscreen_page.dart';
 
@@ -157,7 +158,10 @@ class _JackKnifeGridPageState extends State<JackKnifeGridPage> {
                                   ),
                                 );
                               },
-                              child: JackKnifePanelChart(panel: _data.panels[i]),
+                              child: JackKnifePanelChart(
+                                panel: _data.panels[i],
+                                showTable: JackKnifeViewPrefs.showTable,
+                              ),
                             ),
                           ),
                         );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/jack_knife_dashboard_data.dart';
 import '../theme/app_orange.dart';
+import '../services/jack_knife_view_prefs.dart';
 import '../widgets/jack_knife_panel_chart.dart';
 
 class JackKnifePanelFullscreenPage extends StatelessWidget {
@@ -39,7 +40,10 @@ class JackKnifePanelFullscreenPage extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           child: SizedBox.expand(
-            child: JackKnifePanelChart(panel: panel),
+            child: JackKnifePanelChart(
+              panel: panel,
+              showTable: JackKnifeViewPrefs.showTable,
+            ),
           ),
         ),
       ),

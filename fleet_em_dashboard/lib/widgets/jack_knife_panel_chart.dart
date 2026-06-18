@@ -471,9 +471,14 @@ int? _hitTestPoint(
 
 /// Scatter Jack Knife chart (Events vs Duration) with quadrant reference lines.
 class JackKnifePanelChart extends StatefulWidget {
-  const JackKnifePanelChart({super.key, required this.panel});
+  const JackKnifePanelChart({
+    super.key,
+    required this.panel,
+    this.showTable = true,
+  });
 
   final JackKnifePanel panel;
+  final bool showTable;
 
   @override
   State<JackKnifePanelChart> createState() => _JackKnifePanelChartState();
@@ -575,6 +580,11 @@ class _JackKnifePanelChartState extends State<JackKnifePanelChart> {
                     padding: EdgeInsets.all((8 * sc).clamp(6.0, 14.0)),
                     child: LayoutBuilder(
                       builder: (context, inner) {
+                        final chartSize = Size(inner.maxWidth, inner.maxHeight);
+                        if (!widget.showTable) {
+                          return _buildChartStack(panel, chartSize, sc, chartIndices);
+                        }
+
                         final sideBySide = inner.maxWidth >= 640;
                         final gap = (8 * sc).clamp(6.0, 12.0);
                         final table = JackKnifeDataTable(
@@ -585,14 +595,13 @@ class _JackKnifePanelChartState extends State<JackKnifePanelChart> {
                         );
 
                         if (sideBySide) {
-                          final chartW = inner.maxWidth * 0.58;
-                          final chartSize = Size(chartW, inner.maxHeight);
+                          final splitChartSize = Size(inner.maxWidth * 0.58, inner.maxHeight);
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Expanded(
                                 flex: 58,
-                                child: _buildChartStack(panel, chartSize, sc, chartIndices),
+                                child: _buildChartStack(panel, splitChartSize, sc, chartIndices),
                               ),
                               SizedBox(width: gap),
                               Container(width: 1, color: _border),
@@ -602,13 +611,13 @@ class _JackKnifePanelChartState extends State<JackKnifePanelChart> {
                           );
                         }
 
-                        final chartSize = Size(inner.maxWidth, inner.maxHeight * 0.58);
+                        final stackedChartSize = Size(inner.maxWidth, inner.maxHeight * 0.58);
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Expanded(
                               flex: 58,
-                              child: _buildChartStack(panel, chartSize, sc, chartIndices),
+                              child: _buildChartStack(panel, stackedChartSize, sc, chartIndices),
                             ),
                             SizedBox(height: gap),
                             Expanded(flex: 42, child: table),
