@@ -184,3 +184,83 @@ function fleet_save_list1_name(array $config, string $filename): array
         ['id_list1' => $id]
     );
 }
+
+function fleet_read_current_list2_from_db(array $config): ?array
+{
+    $cfg = $config;
+    $cfg['data_dir'] = (string) ($config['data_dir_list2'] ?? dirname(__DIR__) . '/data/list2');
+    $cfg['public_base_path'] = (string) ($config['public_base_path_list2'] ?? '/em/data/list2');
+
+    try {
+        $pdo = fleet_db_connect($config);
+        $stmt = $pdo->query(
+            'SELECT id_list2, name_list2, date_upload_list2
+             FROM tb_list2
+             ORDER BY id_list2 ASC
+             LIMIT 1'
+        );
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            return null;
+        }
+
+        $filename = trim((string) ($row['name_list2'] ?? ''));
+        if ($filename === '') {
+            return null;
+        }
+
+        $path = fleet_file_path($cfg, $filename);
+        if (!is_file($path)) {
+            return null;
+        }
+
+        return array_merge(
+            fleet_build_current_payload(
+                $cfg,
+                $filename,
+                (string) ($row['date_upload_list2'] ?? '')
+            ),
+            ['id_list2' => (int) ($row['id_list2'] ?? 0)]
+        );
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function fleet_save_list2_name(array $config, string $filename): array
+{
+    $cfg = $config;
+    $cfg['data_dir'] = (string) ($config['data_dir_list2'] ?? dirname(__DIR__) . '/data/list2');
+    $cfg['public_base_path'] = (string) ($config['public_base_path_list2'] ?? '/em/data/list2');
+
+    $pdo = fleet_db_connect($config);
+    $stmt = $pdo->query('SELECT id_list2 FROM tb_list2 ORDER BY id_list2 ASC LIMIT 1');
+    $row = $stmt->fetch();
+
+    if (is_array($row) && isset($row['id_list2'])) {
+        $update = $pdo->prepare(
+            'UPDATE tb_list2
+             SET name_list2 = ?, date_upload_list2 = NOW()
+             WHERE id_list2 = ?'
+        );
+        $update->execute([$filename, (int) $row['id_list2']]);
+        $id = (int) $row['id_list2'];
+    } else {
+        $insert = $pdo->prepare(
+            'INSERT INTO tb_list2 (name_list2, id_upload_list2, date_upload_list2)
+             VALUES (?, 1, NOW())'
+        );
+        $insert->execute([$filename]);
+        $id = (int) $pdo->lastInsertId();
+    }
+
+    $dateStmt = $pdo->prepare('SELECT date_upload_list2 FROM tb_list2 WHERE id_list2 = ?');
+    $dateStmt->execute([$id]);
+    $dateRow = $dateStmt->fetch();
+    $updatedAt = is_array($dateRow) ? (string) ($dateRow['date_upload_list2'] ?? '') : '';
+
+    return array_merge(
+        fleet_build_current_payload($cfg, $filename, $updatedAt),
+        ['id_list2' => $id]
+    );
+}

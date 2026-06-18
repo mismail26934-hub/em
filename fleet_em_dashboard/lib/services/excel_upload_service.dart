@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'dashboard_list_mode.dart';
 import 'fleet_server_config.dart';
 
 class ExcelUploadResult {
@@ -26,7 +27,7 @@ class ExcelUploadService {
     List<int> bytes,
     String filename,
   ) async {
-    final endpoint = FleetServerConfig.uploadUrl.trim();
+    final endpoint = DashboardListMode.uploadUrl.trim();
     if (endpoint.isEmpty) {
       return const ExcelUploadResult(
         ok: false,

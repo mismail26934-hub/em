@@ -6,17 +6,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/fleet_dashboard_data.dart';
+import '../models/jack_knife_dashboard_data.dart';
+import '../pages/jack_knife_grid_page.dart';
 import '../services/carousel_prefs.dart';
+import '../services/dashboard_list_mode.dart';
 import '../services/excel_current_service.dart';
 import '../services/excel_local_path_prefs.dart';
 import '../services/excel_upload_service.dart';
 import '../services/excel_url_prefs.dart';
 import '../services/fleet_excel_parser.dart';
 import '../services/fleet_server_config.dart';
+import '../services/jack_knife_excel_parser.dart';
 import '../services/workbook_loader.dart';
 import '../services/workbook_read_result.dart';
 import '../theme/app_orange.dart';
 import '../widgets/fleet_panel_chart.dart';
+import '../widgets/jack_knife_panel_chart.dart';
 import 'fleet_grid_page.dart';
 
 class FleetDashboardPage extends StatefulWidget {
@@ -28,6 +33,7 @@ class FleetDashboardPage extends StatefulWidget {
 
 class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTickerProviderStateMixin {
   FleetDashboardData? _data;
+  JackKnifeDashboardData? _jkData;
   String? _fileLabel;
   String? _error;
   bool _loading = false;
@@ -50,6 +56,13 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
 
   static const List<int> _carouselMinutePresets = [1, 3, 5, 10, 15, 30, 60];
 
+  bool get _isList2 => DashboardListMode.isList2;
+
+  int get _panelCount =>
+      _isList2 ? (_jkData?.panels.length ?? 0) : (_data?.panels.length ?? 0);
+
+  bool get _hasDashboardData => _isList2 ? _jkData != null : _data != null;
+
   @override
   void initState() {
     super.initState();
@@ -58,14 +71,12 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       duration: const Duration(seconds: 1),
     )..addStatusListener(_onCarouselTickStatus);
     _excelUrlController = TextEditingController();
-    unawaited(_loadCarouselPrefs());
-    unawaited(_primeExcelUrlField());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tryAutoLoad());
+    unawaited(_bootstrap());
   }
 
   void _onCarouselTickStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed || !mounted) return;
-    final n = _data?.panels.length ?? 0;
+    final n = _panelCount;
     if (n <= 1) return;
     final next = (_carouselIndex + 1) % n;
     if (_carouselController.hasClients) {
@@ -83,6 +94,71 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
     _carouselController.dispose();
     _excelUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    await DashboardListMode.init();
+    await _loadCarouselPrefs();
+    await _primeExcelUrlField();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tryAutoLoad());
+  }
+
+  Future<void> _switchListMode(String mode) async {
+    if (mode == DashboardListMode.current) return;
+    await DashboardListMode.setMode(mode);
+    if (!mounted) return;
+    setState(() {
+      _data = null;
+      _jkData = null;
+      _error = null;
+      _carouselIndex = 0;
+    });
+    await _tryAutoLoad();
+  }
+
+  Future<void> _showListModePicker() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Jenis dashboard'),
+          content: const Text(
+            'List 1: chart batang Fleet MTD/YTD.\n'
+            'List 2: Jack Knife scatter (Components / Duration / Events).',
+            style: TextStyle(fontSize: 13, height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'list1'),
+              child: const Text('List 1 — Fleet'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'list2'),
+              child: const Text('List 2 — Jack Knife'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || picked == null) return;
+    await _switchListMode(picked);
+  }
+
+  Widget _listModeChip({bool compact = false}) {
+    final label = _isList2 ? 'List 2' : 'List 1';
+    if (compact) {
+      return IconButton(
+        tooltip: 'Jenis dashboard: $label',
+        onPressed: _showListModePicker,
+        icon: Icon(_isList2 ? Icons.scatter_plot_outlined : Icons.bar_chart),
+      );
+    }
+    return TextButton.icon(
+      onPressed: _showListModePicker,
+      icon: Icon(_isList2 ? Icons.scatter_plot_outlined : Icons.bar_chart, size: 18),
+      label: Text(label),
+    );
   }
 
   Future<void> _primeExcelUrlField() async {
@@ -155,8 +231,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       _carouselTickController.reset();
       return;
     }
-    final d = _data;
-    if (d == null || d.panels.length <= 1) {
+    if (_panelCount <= 1) {
       _carouselPausedForBarHover = false;
       _carouselTickController.reset();
       return;
@@ -171,7 +246,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
 
   void _onCarouselBarChartBarHovered(bool barHovered) {
     if (!mounted) return;
-    final carouselActive = _carouselIntervalMinutes > 0 && ((_data?.panels.length ?? 0) > 1);
+    final carouselActive = _carouselIntervalMinutes > 0 && _panelCount > 1;
     if (!carouselActive) {
       _carouselPausedForBarHover = false;
       return;
@@ -362,6 +437,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
     }
     setState(() {
       _data = null;
+      _jkData = null;
       _error = r.error ?? 'Gagal memuat ulang data dari URL / sumber.';
     });
     if (mounted) _armCarouselTimer();
@@ -377,6 +453,17 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       _error = null;
     });
     try {
+      if (_isList2) {
+        final parsed = parseJackKnifeExcelBytes(bytes);
+        setState(() {
+          _jkData = parsed;
+          _data = null;
+          _fileLabel = label;
+          _loading = false;
+          _carouselIndex = 0;
+          _manualAbsolutePath = manualDesktopPath;
+        });
+      } else {
       final parsed = parseFleetExcelBytes(bytes);
       if (!kIsWeb) {
         final p = manualDesktopPath?.trim();
@@ -392,11 +479,13 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       }
       setState(() {
         _data = parsed;
+        _jkData = null;
         _fileLabel = label;
         _loading = false;
         _carouselIndex = 0;
         _manualAbsolutePath = manualDesktopPath;
       });
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _carouselController.hasClients) {
           _carouselController.jumpToPage(0);
@@ -407,6 +496,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       debugPrint('$e\n$st');
       setState(() {
         _data = null;
+        _jkData = null;
         _error = e.toString();
         _loading = false;
       });
@@ -558,6 +648,24 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
   }
 
   void _openAllChartsGrid() {
+    if (_isList2) {
+      final d = _jkData;
+      if (d == null) return;
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (context) => JackKnifeGridPage(
+            initialData: d,
+            fileLabel: _fileLabel,
+            isLoading: _loading,
+            getLatestData: () => _jkData,
+            onRefresh: _refreshWorkbook,
+            onEditExcelUrl: _showExcelUrlEditor,
+            onPickExcelFile: _pickExcelFromFile,
+          ),
+        ),
+      );
+      return;
+    }
     final d = _data;
     if (d == null) return;
     Navigator.of(context).push<void>(
@@ -580,7 +688,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(child: _body(context)),
-      floatingActionButton: _data == null
+      floatingActionButton: !_hasDashboardData
           ? ValueListenableBuilder<TextEditingValue>(
               valueListenable: _excelUrlController,
               builder: (context, urlValue, _) {
@@ -637,7 +745,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
   }
 
   Widget _body(BuildContext context) {
-    if (_error != null && _data == null) {
+    if (_error != null && !_hasDashboardData) {
       return Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -723,7 +831,7 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       );
     }
 
-    if (_data == null) {
+    if (!_hasDashboardData) {
       return Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 440),
@@ -754,9 +862,12 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'Struktur sheet mengikuti skrip Python em_dashboard.py '
-                    '(baris judul berisi "Fleet", kolom Fleet berisi nama seri, '
-                    'blok 8 kolom nilai + baris Target).',
+                    _isList2
+                        ? 'Struktur sheet Jack Knife: tabel Components / Duration / Events '
+                          '(satu sheet per mesin, mis. CAT 320, CAT 330).'
+                        : 'Struktur sheet mengikuti skrip Python em_dashboard.py '
+                          '(baris judul berisi "Fleet", kolom Fleet berisi nama seri, '
+                          'blok 8 kolom nilai + baris Target).',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4),
                   ),
@@ -818,6 +929,10 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
       );
     }
 
+    if (_isList2) {
+      return _buildJackKnifeBody(context);
+    }
+
     final d = _data!;
     final showToolbarTextLabels = MediaQuery.sizeOf(context).width >= 600;
     final padH = 14.0;
@@ -859,6 +974,10 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
                     onPressed: _showCarouselTimerSettings,
                     icon: const Icon(Icons.timer_outlined),
                   ),
+                  if (showToolbarTextLabels)
+                    _listModeChip()
+                  else
+                    _listModeChip(compact: true),
                   IconButton(
                     tooltip: 'Semua chart (tanpa carousel)',
                     onPressed: _loading ? null : _openAllChartsGrid,
@@ -941,6 +1060,212 @@ class _FleetDashboardPageState extends State<FleetDashboardPage> with SingleTick
                         targetFraction: d.targetFraction,
                         onBarHovered: _onCarouselBarChartBarHovered,
                       ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_carouselIntervalMinutes > 0 && nPanels > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: ListenableBuilder(
+                          listenable: _carouselTickController,
+                          builder: (context, _) {
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                minHeight: 5,
+                                value: _carouselTickController.value.clamp(0.0, 1.0),
+                                backgroundColor: Colors.grey.shade200,
+                                color: AppOrange.primary,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${_carouselIndex + 1} / $nPanels',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            if (_carouselIntervalMinutes > 0)
+                              Text(
+                                'Timer $_carouselIntervalMinutes menit',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(width: 14),
+                        Flexible(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(nPanels, (i) {
+                                final active = i == _carouselIndex;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                                  child: InkWell(
+                                    onTap: () => _carouselController.animateToPage(
+                                      i,
+                                      duration: const Duration(milliseconds: 320),
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 220),
+                                      height: 8,
+                                      width: active ? 22 : 8,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(4),
+                                        color: active ? AppOrange.primary : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildJackKnifeBody(BuildContext context) {
+    final d = _jkData!;
+    final showToolbarTextLabels = MediaQuery.sizeOf(context).width >= 600;
+    final padH = 14.0;
+    final nPanels = d.panels.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_fileLabel != null)
+          Material(
+            elevation: 2,
+            shadowColor: AppOrange.primary.withValues(alpha: 0.2),
+            color: AppOrange.surface,
+            child: Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: AppOrange.primary, width: 5),
+                  bottom: BorderSide(color: Color(0x33FFB74D)),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.scatter_plot_outlined, size: 20, color: AppOrange.dark),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _fileLabel!,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Atur timer carousel (menit)',
+                    onPressed: _showCarouselTimerSettings,
+                    icon: const Icon(Icons.timer_outlined),
+                  ),
+                  if (showToolbarTextLabels)
+                    _listModeChip()
+                  else
+                    _listModeChip(compact: true),
+                  IconButton(
+                    tooltip: 'Semua chart Jack Knife',
+                    onPressed: _loading ? null : _openAllChartsGrid,
+                    icon: const Icon(Icons.grid_view),
+                  ),
+                  IconButton(
+                    tooltip: 'Segarkan data',
+                    onPressed: _loading ? null : _refreshWorkbook,
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppOrange.primary,
+                            ),
+                          )
+                        : const Icon(Icons.refresh),
+                  ),
+                  if (showToolbarTextLabels)
+                    TextButton.icon(
+                      onPressed: _loading ? null : _showExcelUrlEditor,
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Ubah URL'),
+                    )
+                  else
+                    IconButton(
+                      tooltip: 'Ubah URL',
+                      onPressed: _loading ? null : _showExcelUrlEditor,
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _excelUrlController,
+                    builder: (context, urlValue, _) {
+                      if (!_showToolbarDeviceUploadForUrlField(urlValue.text)) {
+                        return const SizedBox.shrink();
+                      }
+                      if (showToolbarTextLabels) {
+                        return TextButton.icon(
+                          onPressed: _loading ? null : _pickExcelFromFile,
+                          icon: const Icon(Icons.upload_file_outlined, size: 18),
+                          label: const Text('Unggah file'),
+                        );
+                      }
+                      return IconButton(
+                        tooltip: 'Unggah file',
+                        onPressed: _loading ? null : _pickExcelFromFile,
+                        icon: const Icon(Icons.upload_file_outlined),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _carouselController,
+                  itemCount: nPanels,
+                  onPageChanged: _onCarouselPageChanged,
+                  itemBuilder: (context, i) {
+                    return Padding(
+                      padding: EdgeInsets.fromLTRB(padH, 10, padH, 6),
+                      child: JackKnifePanelChart(panel: d.panels[i]),
                     );
                   },
                 ),

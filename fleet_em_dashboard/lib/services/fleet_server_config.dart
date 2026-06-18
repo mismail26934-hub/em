@@ -4,6 +4,9 @@
 /// `--dart-define=FLEET_EXCEL_URL=...`
 /// `--dart-define=FLEET_UPLOAD_URL=...`
 /// `--dart-define=FLEET_CURRENT_URL=...`
+/// `--dart-define=FLEET_UPLOAD_URL_LIST2=...`
+/// `--dart-define=FLEET_CURRENT_URL_LIST2=...`
+/// `--dart-define=FLEET_ACTIVE_LIST=list1|list2`
 /// `--dart-define=FLEET_UPLOAD_TOKEN=...`
 class FleetServerConfig {
   FleetServerConfig._();
@@ -33,6 +36,21 @@ class FleetServerConfig {
     defaultValue: 'https://strakin.tech/em/api/current.php',
   );
 
+  static const String uploadUrlList2 = String.fromEnvironment(
+    'FLEET_UPLOAD_URL_LIST2',
+    defaultValue: 'https://strakin.tech/em/api/upload_list2.php',
+  );
+
+  static const String currentUrlList2 = String.fromEnvironment(
+    'FLEET_CURRENT_URL_LIST2',
+    defaultValue: 'https://strakin.tech/em/api/current_list2.php',
+  );
+
+  static const String activeList = String.fromEnvironment(
+    'FLEET_ACTIVE_LIST',
+    defaultValue: 'list1',
+  );
+
   static const String uploadToken = String.fromEnvironment(
     'FLEET_UPLOAD_TOKEN',
     defaultValue: 'fleet-em-change-me',
@@ -43,12 +61,16 @@ class FleetServerConfig {
     final override = excelUrlOverride.trim();
     if (override.isNotEmpty) return override;
     final base = _hostBase.replaceAll(RegExp(r'/+$'), '');
-    return '$base/data/list1/$_excelFileName';
+    final sub = activeList.trim().toLowerCase() == 'list2' ? 'list2' : 'list1';
+    return '$base/data/$sub/$_excelFileName';
   }
 
   @Deprecated('Use ExcelCurrentService.resolveServerExcelUrl()')
   static String get defaultExcelUrl => legacyDefaultExcelUrl;
 
-  static bool get hasUploadEndpoint => uploadUrl.trim().isNotEmpty;
-  static bool get hasCurrentEndpoint => currentUrl.trim().isNotEmpty;
+  static bool get hasUploadEndpoint =>
+      uploadUrl.trim().isNotEmpty || uploadUrlList2.trim().isNotEmpty;
+
+  static bool get hasCurrentEndpoint =>
+      currentUrl.trim().isNotEmpty || currentUrlList2.trim().isNotEmpty;
 }

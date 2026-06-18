@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'dashboard_list_mode.dart';
 import 'fleet_server_config.dart';
 
 class ExcelCurrentInfo {
@@ -32,7 +33,7 @@ class ExcelCurrentService {
   ExcelCurrentService._();
 
   static Future<ExcelCurrentInfo?> fetchCurrent() async {
-    final endpoint = FleetServerConfig.currentUrl.trim();
+    final endpoint = DashboardListMode.currentUrl.trim();
     if (endpoint.isEmpty) return null;
 
     try {
